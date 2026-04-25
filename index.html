@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Snake Ultra Deluxe HD</title>
+    <style>
+        body {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            height: 100vh; margin: 0; background-color: #8da334; font-family: 'Courier New', monospace;
+            overflow: hidden; touch-action: none;
+        }
+        
+        /* Lobby & Skin Menu */
+        #lobby, #skin-menu {
+            position: fixed; inset: 0; background: #8da334; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 100;
+        }
+
+        h1 { color: #2e3b13; font-size: 38px; margin: 0 0 20px 0; text-shadow: 3px 3px #97ad3a; }
+
+        .menu-btn {
+            padding: 18px 30px; font-size: 20px; background: #2e3b13; color: #97ad3a;
+            border: none; border-radius: 15px; cursor: pointer; margin: 10px;
+            font-family: inherit; font-weight: bold; width: 250px;
+            box-shadow: 0 6px #1a2408;
+        }
+        .menu-btn:active { transform: translateY(3px); box-shadow: 0 3px #1a2408; }
+
+        /* Skin Selection */
+        .skin-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 20px;
+        }
+        .skin-dot {
+            width: 70px; height: 70px; border-radius: 15px; border: 4px solid #2e3b13; cursor: pointer;
+            box-shadow: 0 4px rgba(0,0,0,0.2);
+        }
+
+        /* Game Layout */
+        #game-ui { display: none; text-align: center; }
+        .stat-bar { color: #2e3b13; font-weight: bold; font-size: 22px; margin-bottom: 10px; }
+        #canvas-wrapper { border: 10px solid #2e3b13; border-radius: 12px; background: #97ad3a; line-height: 0; }
+
+        /* Tombol Kontrol Presisi */
+        .controls-wrapper {
+            margin-top: 25px; display: flex; flex-direction: column; align-items: center;
+        }
+        .row { display: flex; justify-content: center; gap: 20px; margin-bottom: 15px; }
+        .ctrl-btn {
+            width: 80px; height: 80px; background: #2e3b13; color: #97ad3a;
+            border: none; border-radius: 50%; font-size: 35px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 6px #1a2408; -webkit-tap-highlight-color: transparent;
+        }
+        .ctrl-btn:active { transform: translateY(4px); box-shadow: 0 2px #1a2408; }
+    </style>
+</head>
+<body>
+
+    <div id="lobby">
+        <h1>SNAKE ULTRA</h1>
+        <button class="menu-btn" onclick="startEverything()">MULAI & MUSIK</button>
+        <button class="menu-btn" onclick="showSkinMenu()">GANTI SKIN</button>
+        <p style="color: #2e3b13; font-weight: bold; font-size: 20px;">BEST SCORE: <span id="highScoreLobby">0</span></p>
+    </div>
+
+    <div id="skin-menu" style="display: none;">
+        <h1>PILIH WARNA</h1>
+        <div class="skin-grid">
+            <div class="skin-dot" style="background:#2e3b13" onclick="setSkin('#2e3b13')"></div>
+            <div class="skin-dot" style="background:#800000" onclick="setSkin('#800000')"></div>
+            <div class="skin-dot" style="background:#000080" onclick="setSkin('#000080')"></div>
+            <div class="skin-dot" style="background:#e6b800" onclick="setSkin('#e6b800')"></div>
+            <div class="skin-dot" style="background:#ffffff" onclick="setSkin('#ffffff')"></div>
+            <div class="skin-dot" style="background:#ff69b4" onclick="setSkin('#ff69b4')"></div>
+            <div class="skin-dot" style="background:#800080" onclick="setSkin('#800080')"></div>
+            <div class="skin-dot" style="background:#ff4500" onclick="setSkin('#ff4500')"></div>
+            <div class="skin-dot" style="background:#00ced1" onclick="setSkin('#00ced1')"></div>
+        </div>
+        <button class="menu-btn" onclick="hideSkinMenu()">KEMBALI</button>
+    </div>
+
+    <div id="game-ui">
+        <div class="stat-bar">🍎 <span id="scoreVal">0</span> | BEST: <span id="highScoreVal">0</span></div>
+        <div id="canvas-wrapper">
+            <canvas id="snakeGame" width="340" height="340"></canvas>
+        </div>
+        
+        <div class="controls-wrapper">
+            <div class="row">
+                <button class="ctrl-btn" onclick="changeDir('UP')">↑</button>
+            </div>
+            <div class="row">
+                <button class="ctrl-btn" onclick="changeDir('LEFT')">←</button>
+                <button class="ctrl-btn" onclick="changeDir('DOWN')">↓</button>
+                <button class="ctrl-btn" onclick="changeDir('RIGHT')">→</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("snakeGame");
+        const ctx = canvas.getContext("2d");
+        
+        let score = 0;
+        let highScore = localStorage.getItem("snakeHighScore") || 0;
+        let snakeColor = "#2e3b13";
+        let gameActive = false;
+        let audioCtx;
+        let bgmInterval;
+
+        document.getElementById("highScoreLobby").innerText = highScore;
+        document.getElementById("highScoreVal").innerText = highScore;
+
+        // --- AUDIO SYSTEM (BOOSTED VOLUME) ---
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            startBGM();
+        }
+
+        function playEatSound() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(523.25, audioCtx.currentTime); 
+            osc.frequency.exponentialRampToValueAtTime(1046.50, audioCtx.currentTime + 0.1); 
+            
+            // KENCANG
+            g.gain.setValueAtTime(0.4, audioCtx.currentTime);
+            g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.1);
+            
+            osc.connect(g); g.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
+        }
+
+        function startBGM() {
+            if(bgmInterval) clearInterval(bgmInterval);
+            const notes = [261.63, 329.63, 392.00, 523.25, 392.00, 329.63]; 
+            let step = 0;
+            bgmInterval = setInterval(() => {
+                const osc = audioCtx.createOscillator();
+                const g = audioCtx.createGain();
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(notes[step % notes.length], audioCtx.currentTime);
+                
+                // MUSIK KENCANG
+                g.gain.setValueAtTime(0.2, audioCtx.currentTime);
+                g.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.5);
+                
+                osc.connect(g); g.connect(audioCtx.destination);
+                osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+                step++;
+            }, 500);
+        }
+
+        // --- UI NAVIGATION ---
+        function showSkinMenu() { document.getElementById('lobby').style.display='none'; document.getElementById('skin-menu').style.display='flex'; }
+        function hideSkinMenu() { document.getElementById('skin-menu').style.display='none'; document.getElementById('lobby').style.display='flex'; }
+        function setSkin(color) { snakeColor = color; hideSkinMenu(); }
+
+        function startEverything() {
+            initAudio();
+            document.getElementById('lobby').style.display = 'none';
+            document.getElementById('game-ui').style.display = 'block';
+            resetGame();
+        }
+
+        // --- GAME ENGINE ---
+        let snake = [], foods = [], d = "RIGHT", nextD = "RIGHT", speed = 1.4;
+
+        function resetGame() {
+            score = 0;
+            document.getElementById('scoreVal').innerText = "0";
+            snake = [];
+            for(let i=0; i<30; i++) snake.push({x: 100-i, y: 170});
+            foods = [];
+            for(let i=0; i<11; i++) foods.push({x: Math.random()*300+20, y: Math.random()*300+20});
+            d = "RIGHT"; nextD = "RIGHT";
+            gameActive = true;
+            gameLoop();
+        }
+
+        function changeDir(dir) {
+            if(dir==="UP" && d!=="DOWN") nextD="UP";
+            if(dir==="DOWN" && d!=="UP") nextD="DOWN";
+            if(dir==="LEFT" && d!=="RIGHT") nextD="LEFT";
+            if(dir==="RIGHT" && d!=="LEFT") nextD="RIGHT";
+        }
+
+        function drawApple(x, y) {
+            ctx.fillStyle = "#ff0000"; 
+            ctx.beginPath(); ctx.arc(x, y, 7, 0, Math.PI*2); ctx.fill();
+            ctx.fillStyle = "#4d2600"; 
+            ctx.fillRect(x-1, y-10, 2, 4);
+            ctx.fillStyle = "#228b22"; 
+            ctx.beginPath(); ctx.ellipse(x+2, y-9, 3, 2, 45, 0, Math.PI*2); ctx.fill();
+        }
+
+        function gameLoop() {
+            if(!gameActive) return;
+            d = nextD;
+            let head = {...snake[0]};
+            if(d==="UP") head.y-=speed; if(d==="DOWN") head.y+=speed;
+            if(d==="LEFT") head.x-=speed; if(d==="RIGHT") head.x+=speed;
+
+            if(head.x<0 || head.x>canvas.width || head.y<0 || head.y>canvas.height) return gameOver();
+            for(let i=40; i<snake.length; i++) {
+                if(Math.hypot(head.x-snake[i].x, head.y-snake[i].y) < 3) return gameOver();
+            }
+
+            foods.forEach((f, i) => {
+                if(Math.hypot(head.x-f.x, head.y-f.y) < 13) {
+                    playEatSound();
+                    score++; document.getElementById('scoreVal').innerText = score;
+                    foods[i] = {x: Math.random()*300+20, y: Math.random()*300+20};
+                    for(let j=0; j<25; j++) snake.push({...snake[snake.length-1]});
+                }
+            });
+
+            snake.unshift(head); snake.pop();
+
+            ctx.fillStyle = "#97ad3a"; ctx.fillRect(0,0,canvas.width,canvas.height);
+            foods.forEach(f => drawApple(f.x, f.y));
+
+            ctx.lineWidth = 14; ctx.lineCap = "round"; ctx.strokeStyle = snakeColor;
+            ctx.beginPath(); ctx.moveTo(snake[0].x, snake[0].y);
+            for(let i=1; i<snake.length; i++) ctx.lineTo(snake[i].x, snake[i].y);
+            ctx.stroke();
+
+            // Mata Putih
+            ctx.fillStyle = "white";
+            ctx.beginPath(); ctx.arc(snake[0].x, snake[0].y-3, 2.5, 0, Math.PI*2);
+            ctx.arc(snake[0].x, snake[0].y+3, 2.5, 0, Math.PI*2); ctx.fill();
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameActive = false;
+            if(score > highScore) {
+                highScore = score;
+                localStorage.setItem("snakeHighScore", highScore);
+            }
+            alert("GAME OVER!\nSKOR KAMU: " + score);
+            location.reload();
+        }
+
+        document.addEventListener("keydown", e => {
+            if(e.key.includes("Arrow")) changeDir(e.key.replace("Arrow","").toUpperCase());
+        });
+    </script>
+</body>
+</html>
+
